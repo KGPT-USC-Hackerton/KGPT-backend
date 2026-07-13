@@ -1,0 +1,20 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: bloomdent-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-bloomdent123}
+      MARIADB_DATABASE: ${DB_NAME:-bloomdent_db}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - bloomdent_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  bloomdent_db_data:
