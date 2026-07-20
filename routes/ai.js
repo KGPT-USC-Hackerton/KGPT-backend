@@ -205,6 +205,181 @@ ${JSON.stringify(responses, null, 2)}
   }
 });
 
+// -----------------------------------------------------
+// POST /api/ai/combined-analysis
+//   설문 응답 + 구강사진 AI 분석을 합쳐 LLM에 한 번에 보내는 통합 분석
+//   body: { user_id, survey_session_id, history_id }
+// -----------------------------------------------------
+router.post("/combined-analysis", async (req, res) => {
+  const { user_id, survey_session_id, history_id } = req.body;
+
+  if (!user_id || !survey_session_id || !history_id) {
+    return res.status(400).json({
+      success: false,
+      message: "user_id, survey_session_id, history_id는 모두 필수입니다.",
+    });
+  }
+
+  try {
+    // 1) 설문 응답
+    const [surveyResponses] = await pool.query(
+      `
+      SELECT
+        usr.question_number,
+        sq.question_text,
+        usr.option_number,
+        sqo.option_text,
+        usr.score,
+        usr.category
+      FROM user_survey_responses usr
+      JOIN survey_questions sq
+        ON usr.question_number = sq.question_number
+      JOIN survey_question_options sqo
+        ON usr.question_number = sqo.question_number
+       AND usr.option_number   = sqo.option_number
+      WHERE usr.user_id = ?
+        AND usr.survey_session_id = ?
+      ORDER BY usr.question_number ASC
+      `,
+      [user_id, survey_session_id]
+    );
+
+    // 2) 카테고리별 점수(요약)
+    const [scoreRows] = await pool.query(
+      `
+      SELECT total_score, oral_care_score, cavity_dryness_score,
+             smoking_drinking_score, cariogenic_food_score,
+             sensitivity_fluoride_score, oral_habits_score
+      FROM user_health_scores
+      WHERE user_id = ?
+      `,
+      [user_id]
+    );
+    const categoryScores = scoreRows[0] || null;
+
+    // 3) 구강사진 분석 결과 (upper/lower/front)
+    //    position(upper/lower/front)은 dental_images, 분석 결과는 image_analysis(image_id 조인)
+    const [imageRows] = await pool.query(
+      `
+      SELECT
+        di.position AS image_type,
+        di.analysis_status,
+        ia.occlusion_status, ia.occlusion_comment,
+        ia.cavity_detected, ia.cavity_locations, ia.cavity_comment,
+        ia.overall_score, ia.recommendations, ia.ai_confidence
+      FROM dental_images di
+      LEFT JOIN image_analysis ia ON ia.image_id = di.id
+      WHERE di.user_id = ?
+        AND di.history_id = ?
+      ORDER BY
+        CASE di.position
+          WHEN 'upper' THEN 1 WHEN 'lower' THEN 2 WHEN 'front' THEN 3 ELSE 99
+        END, di.id ASC
+      `,
+      [user_id, history_id]
+    );
+
+    if (surveyResponses.length === 0 && imageRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "해당 세션의 설문/사진 데이터가 모두 없습니다.",
+      });
+    }
+
+    const parseLocations = (value) => {
+      if (!value) return [];
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    };
+
+    const imageRecords = imageRows.map((r) => ({
+      image_type: r.image_type,
+      analysis_status: r.analysis_status,
+      occlusion_status: r.occlusion_status,
+      occlusion_comment: r.occlusion_comment,
+      cavity_detected: !!r.cavity_detected,
+      cavity_locations: parseLocations(r.cavity_locations),
+      cavity_comment: r.cavity_comment,
+      overall_score: r.overall_score !== null ? Number(r.overall_score) : null,
+      recommendations: r.recommendations,
+    }));
+
+    // 4) 통합 프롬프트
+    const prompt = `
+당신은 전문 치과의사이자 치과위생사 AI입니다.
+아래는 한 사용자의 (1) 구강건강 설문 응답과 카테고리별 점수, (2) 윗니(upper)/아랫니(lower)/앞니(front) 사진에 대한 AI 분석 결과입니다.
+두 자료를 "종합"하여 사용자의 구강 건강 상태를 통합적으로 분석하세요.
+설문 결과와 사진 결과가 서로 연관되는 지점(예: 설문상 잇몸 출혈 + 사진상 치은 이상)이 있으면 그 연결을 짚어 설명하세요.
+말투는 정중한 한국어로 작성합니다.
+
+[설문 응답(JSON)]
+${JSON.stringify(surveyResponses, null, 2)}
+
+[카테고리별 점수(JSON, 100점 만점)]
+${JSON.stringify(categoryScores, null, 2)}
+
+[구강사진 분석(JSON)]
+${JSON.stringify(imageRecords, null, 2)}
+
+반드시 아래 JSON 형식만 출력하세요. 마크다운 코드블록(\`\`\`)이나 설명 문장 없이 순수 JSON 객체만 응답하세요.
+
+{
+  "summary": "설문과 사진을 종합한 총평 (3~4문장)",
+  "details": "세부 통합 분석 (설문·사진의 연결 포함)",
+  "risk_factors": ["위험 요인 1", "위험 요인 2"],
+  "improvements": ["개선해야 할 습관/행동 1", "개선 2"],
+  "recommendations": ["맞춤 구강용품 또는 관리 추천 1", "추천 2"],
+  "photo": {
+    "upper": "윗니 요약 (사진 없으면 빈 문자열)",
+    "lower": "아랫니 요약 (사진 없으면 빈 문자열)",
+    "front": "앞니 요약 (사진 없으면 빈 문자열)",
+    "overall": "사진 종합 요약 (사진 없으면 빈 문자열)"
+  }
+}
+    `;
+
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" },
+    });
+
+    const text = result.text || "";
+    const analysis = parseGeminiJsonOrThrow(text, "combined-analysis");
+
+    // 5) 저장 (재분석 시 덮어쓰기)
+    await pool.query(
+      `
+      INSERT INTO combined_analysis (user_id, survey_session_id, history_id, analysis_json)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE analysis_json = VALUES(analysis_json), updated_at = NOW()
+      `,
+      [user_id, survey_session_id, history_id, JSON.stringify(analysis)]
+    );
+
+    return res.json({
+      success: true,
+      message: "통합 분석 완료",
+      analysis,
+      meta: {
+        survey_count: surveyResponses.length,
+        image_count: imageRecords.length,
+      },
+    });
+  } catch (error) {
+    console.error("combined-analysis error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "통합 분석 중 오류 발생",
+      error: IS_DEV ? error.message : undefined,
+    });
+  }
+});
+
 // -------------------------------------------
 // 2) 구강 용품 추천 API
 // POST /api/ai/recommendations

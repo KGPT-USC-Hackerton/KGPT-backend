@@ -250,3 +250,16 @@ CREATE TABLE IF NOT EXISTS score_history (
   INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='점수 이력';
 
+
+-- 설문 + 구강사진 통합 분석 결과 (LLM)
+CREATE TABLE IF NOT EXISTS combined_analysis (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  survey_session_id VARCHAR(100) NOT NULL COMMENT '설문 세션 ID',
+  history_id VARCHAR(100) NOT NULL COMMENT '사진 묶음 history_id',
+  analysis_json LONGTEXT NOT NULL COMMENT '통합 분석 결과 JSON',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_combined (user_id, survey_session_id, history_id),
+  INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='설문+사진 통합 분석 결과';
