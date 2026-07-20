@@ -241,17 +241,36 @@ router.get('/:id/available-slots', async (req, res) => {
   }
 });
 
-// 모든 치과 목록 조회
+// 모든 치과 목록 조회 (페이지네이션)
 router.get('/', async (req, res) => {
   try {
+    // page: 1부터, limit: 1~100 (기본 20)
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+
+    // 전체 개수
+    const [countRows] = await pool.query('SELECT COUNT(*) AS total FROM dentists');
+    const total = countRows[0].total;
+
     const [clinics] = await pool.query(
-      `SELECT *, ${NAME} AS name, ${ADDRESS} AS address FROM dentists ORDER BY name`
+      `SELECT *, ${NAME} AS name, ${ADDRESS} AS address FROM dentists ORDER BY name LIMIT ? OFFSET ?`,
+      [limit, offset]
     );
+
+    const totalPages = Math.ceil(total / limit);
 
     res.json({
       success: true,
       count: clinics.length,
-      data: clinics
+      data: clinics,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasMore: page < totalPages
+      }
     });
 
   } catch (error) {
