@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS dentists (
   state VARCHAR(10),
   postal_code VARCHAR(20),
   phone VARCHAR(50),
+  is_partner TINYINT(1) NOT NULL DEFAULT 0 COMMENT '협약 병원 여부',
   latitude DECIMAL(10, 7) COMMENT '위도',
   longitude DECIMAL(10, 7) COMMENT '경도',
   geocode_status VARCHAR(30),
@@ -63,7 +64,8 @@ CREATE TABLE IF NOT EXISTS dentists (
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   UNIQUE KEY uq_dentists_npi (npi),
   KEY idx_dentists_location (state, city),
-  KEY idx_dentists_taxonomy (taxonomy_code)
+  KEY idx_dentists_taxonomy (taxonomy_code),
+  KEY idx_dentists_is_partner (is_partner)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='치과 provider 정보(NPI)';
 
 -- 3. 예약 가능 시간 슬롯 테이블
