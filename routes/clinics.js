@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../config/database');
+const { nameExpr, addressExpr } = require('../utils/dentist');
+
+// dentists 테이블을 치과(clinic)로 노출하기 위한 공용 SELECT 컬럼.
+// name/address 는 계산 컬럼으로 만들어 기존 응답 필드명을 그대로 유지한다.
+const NAME = nameExpr();
+const ADDRESS = addressExpr();
 
 // 주변 치과 검색 (위치 기반) - MySQL 공간 함수 사용
 router.get('/nearby', async (req, res) => {
@@ -28,8 +34,10 @@ router.get('/nearby', async (req, res) => {
     // MySQL의 ST_Distance_Sphere 함수를 사용하여 DB에서 직접 거리 계산
     // POINT(경도, 위도) 순서임에 주의!
     const query = `
-      SELECT 
+      SELECT
         *,
+        ${NAME} AS name,
+        ${ADDRESS} AS address,
         ROUND(
           ST_Distance_Sphere(
             POINT(longitude, latitude),
@@ -37,9 +45,10 @@ router.get('/nearby', async (req, res) => {
           ) / 1000,
           2
         ) AS distance
-      FROM dental_clinics
-      WHERE 
-        latitude BETWEEN ? AND ?
+      FROM dentists
+      WHERE
+        latitude IS NOT NULL AND longitude IS NOT NULL
+        AND latitude BETWEEN ? AND ?
         AND longitude BETWEEN ? AND ?
       HAVING distance <= ?
       ORDER BY distance ASC
@@ -87,9 +96,18 @@ router.get('/search', async (req, res) => {
       });
     }
 
+    // 이름(성/이름/기관명)과 주소 구성 요소를 대상으로 검색
+    const like = `%${keyword}%`;
     const [clinics] = await pool.query(
-      'SELECT * FROM dental_clinics WHERE name LIKE ? OR address LIKE ? ORDER BY name',
-      [`%${keyword}%`, `%${keyword}%`]
+      `SELECT *, ${NAME} AS name, ${ADDRESS} AS address
+       FROM dentists
+       WHERE first_name LIKE ?
+          OR last_name LIKE ?
+          OR organization_name LIKE ?
+          OR address_line1 LIKE ?
+          OR city LIKE ?
+       ORDER BY name`,
+      [like, like, like, like, like]
     );
 
     res.json({
@@ -115,7 +133,7 @@ router.get('/:id', async (req, res) => {
     const { id } = req.params;
 
     const [clinics] = await pool.query(
-      'SELECT * FROM dental_clinics WHERE id = ?',
+      `SELECT *, ${NAME} AS name, ${ADDRESS} AS address FROM dentists WHERE id = ?`,
       [id]
     );
 
@@ -152,16 +170,16 @@ router.get('/:id/available-dates', async (req, res) => {
       const kstDate = new Date(date.toLocaleString("en-US", {timeZone: "Asia/Seoul"}));
       return kstDate.toISOString().split('T')[0];
     };
-    
+
     const today = new Date();
     const fromDate = from_date || getKSTDate(today);
     const toDate = to_date || getKSTDate(new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000));
 
     const [dates] = await pool.query(
-      `SELECT DISTINCT DATE_FORMAT(date, '%Y-%m-%d') as date 
-       FROM appointment_slots 
-       WHERE clinic_id = ? 
-         AND date BETWEEN ? AND ? 
+      `SELECT DISTINCT DATE_FORMAT(date, '%Y-%m-%d') as date
+       FROM appointment_slots
+       WHERE clinic_id = ?
+         AND date BETWEEN ? AND ?
          AND is_available = TRUE
        ORDER BY date`,
       [id, fromDate, toDate]
@@ -198,8 +216,8 @@ router.get('/:id/available-slots', async (req, res) => {
     }
 
     const [slots] = await pool.query(
-      `SELECT id, time_slot, is_available 
-       FROM appointment_slots 
+      `SELECT id, time_slot, is_available
+       FROM appointment_slots
        WHERE clinic_id = ? AND date = ? AND is_available = TRUE
        ORDER BY time_slot`,
       [id, date]
@@ -227,7 +245,7 @@ router.get('/:id/available-slots', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const [clinics] = await pool.query(
-      'SELECT * FROM dental_clinics ORDER BY name'
+      `SELECT *, ${NAME} AS name, ${ADDRESS} AS address FROM dentists ORDER BY name`
     );
 
     res.json({
@@ -247,4 +265,3 @@ router.get('/', async (req, res) => {
 });
 
 module.exports = router;
-

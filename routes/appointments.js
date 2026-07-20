@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../config/database');
+const { nameExpr, addressExpr } = require('../utils/dentist');
+
+// dentists 테이블을 치과로 조인할 때 사용하는 계산 컬럼 (별칭 dc 기준)
+const DC_NAME = nameExpr('dc');
+const DC_ADDRESS = addressExpr('dc');
 
 // 예약 생성 (설문 포함)
 router.post('/', async (req, res) => {
@@ -79,13 +84,13 @@ router.post('/', async (req, res) => {
     const [newAppointment] = await connection.query(
       `SELECT 
         a.*,
-        dc.name as clinic_name,
-        dc.address as clinic_address,
+        ${DC_NAME} as clinic_name,
+        ${DC_ADDRESS} as clinic_address,
         dc.phone as clinic_phone,
         s.date as appointment_date,
         s.time_slot as appointment_time
        FROM appointments a
-       JOIN dental_clinics dc ON a.clinic_id = dc.id
+       JOIN dentists dc ON a.clinic_id = dc.id
        JOIN appointment_slots s ON a.slot_id = s.id
        WHERE a.id = ?`,
       [appointmentId]
@@ -118,15 +123,15 @@ router.get('/:id', async (req, res) => {
     const [appointments] = await pool.query(
       `SELECT 
         a.*,
-        dc.name as clinic_name,
-        dc.address as clinic_address,
+        ${DC_NAME} as clinic_name,
+        ${DC_ADDRESS} as clinic_address,
         dc.phone as clinic_phone,
         dc.latitude,
         dc.longitude,
         s.date as appointment_date,
         s.time_slot as appointment_time
        FROM appointments a
-       JOIN dental_clinics dc ON a.clinic_id = dc.id
+       JOIN dentists dc ON a.clinic_id = dc.id
        JOIN appointment_slots s ON a.slot_id = s.id
        WHERE a.id = ?`,
       [id]
@@ -183,13 +188,13 @@ router.get('/patient/:phone', async (req, res) => {
     let query = `
       SELECT 
         a.*,
-        dc.name as clinic_name,
-        dc.address as clinic_address,
+        ${DC_NAME} as clinic_name,
+        ${DC_ADDRESS} as clinic_address,
         dc.phone as clinic_phone,
         s.date as appointment_date,
         s.time_slot as appointment_time
       FROM appointments a
-      JOIN dental_clinics dc ON a.clinic_id = dc.id
+      JOIN dentists dc ON a.clinic_id = dc.id
       JOIN appointment_slots s ON a.slot_id = s.id
       WHERE a.patient_phone = ?
     `;

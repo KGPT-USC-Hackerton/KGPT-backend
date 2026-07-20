@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const { pool } = require('../config/database');
+const { nameExpr, addressExpr } = require('../utils/dentist');
+
+// dentists 테이블을 치과로 조인할 때 사용하는 계산 컬럼 (별칭 dc 기준)
+const DC_NAME = nameExpr('dc');
+const DC_ADDRESS = addressExpr('dc');
 
 // 설문 답변 검증 함수
 const validateSurveyAnswers = (surveyAnswers) => {
@@ -274,13 +279,13 @@ router.get('/:id/appointments', async (req, res) => {
     let query = `
       SELECT 
         a.*,
-        dc.name as clinic_name,
-        dc.address as clinic_address,
+        ${DC_NAME} as clinic_name,
+        ${DC_ADDRESS} as clinic_address,
         dc.phone as clinic_phone,
         s.date as appointment_date,
         s.time_slot as appointment_time
       FROM appointments a
-      JOIN dental_clinics dc ON a.clinic_id = dc.id
+      JOIN dentists dc ON a.clinic_id = dc.id
       JOIN appointment_slots s ON a.slot_id = s.id
       WHERE a.user_id = ?
     `;
