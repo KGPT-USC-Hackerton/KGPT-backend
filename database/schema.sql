@@ -27,18 +27,55 @@ CREATE TABLE IF NOT EXISTS dental_clinics (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_location (latitude, longitude),
   INDEX idx_is_partner (is_partner)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='치과 병원 정보';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='치과 병원 정보(레거시, 미사용)';
+
+-- 2-1. 치과(provider) 정보 테이블 - NPI 기반, 실제 치과 데이터 소스
+--   치과명은 first_name+last_name 조합, 없으면 organization_name 으로 표시한다(백엔드에서 계산).
+--   ※ 데이터는 외부 로더로 적재되며, 이 정의는 구조 재현용이다.
+CREATE TABLE IF NOT EXISTS dentists (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  npi VARCHAR(10) NOT NULL COMMENT 'NPI 번호',
+  entity_type TINYINT UNSIGNED COMMENT '1=개인, 2=기관',
+  first_name VARCHAR(255) COMMENT '이름',
+  last_name VARCHAR(255) COMMENT '성',
+  credential VARCHAR(255) COMMENT '자격',
+  organization_name VARCHAR(500) COMMENT '기관명',
+  taxonomy_code VARCHAR(20),
+  taxonomy_description VARCHAR(255),
+  address_line1 VARCHAR(500),
+  address_line2 VARCHAR(500),
+  city VARCHAR(255),
+  state VARCHAR(10),
+  postal_code VARCHAR(20),
+  phone VARCHAR(50),
+  latitude DECIMAL(10, 7) COMMENT '위도',
+  longitude DECIMAL(10, 7) COMMENT '경도',
+  geocode_status VARCHAR(30),
+  geocode_match_type VARCHAR(30),
+  geocode_matched_address VARCHAR(500),
+  geocoded_at DATETIME(6),
+  enumeration_date DATE,
+  last_updated_date DATE,
+  deactivation_date DATE,
+  source_data LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(source_data)),
+  fetched_at DATETIME(6) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uq_dentists_npi (npi),
+  KEY idx_dentists_location (state, city),
+  KEY idx_dentists_taxonomy (taxonomy_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='치과 provider 정보(NPI)';
 
 -- 3. 예약 가능 시간 슬롯 테이블
 CREATE TABLE IF NOT EXISTS appointment_slots (
   id INT PRIMARY KEY AUTO_INCREMENT,
-  clinic_id INT NOT NULL,
+  clinic_id BIGINT UNSIGNED NOT NULL COMMENT 'dentists.id 참조',
   date DATE NOT NULL COMMENT '예약 날짜',
   time_slot TIME NOT NULL COMMENT '예약 시간',
   is_available BOOLEAN DEFAULT TRUE COMMENT '예약 가능 여부',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (clinic_id) REFERENCES dental_clinics(id) ON DELETE CASCADE,
+  FOREIGN KEY (clinic_id) REFERENCES dentists(id) ON DELETE CASCADE,
   UNIQUE KEY unique_slot (clinic_id, date, time_slot),
   INDEX idx_clinic_date (clinic_id, date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='예약 가능 시간';
@@ -58,7 +95,7 @@ CREATE TABLE IF NOT EXISTS reservation_survey_questions (
 CREATE TABLE IF NOT EXISTS appointments (
   id INT PRIMARY KEY AUTO_INCREMENT,
   user_id INT COMMENT '사용자 ID (로그인한 경우)',
-  clinic_id INT NOT NULL,
+  clinic_id BIGINT UNSIGNED NOT NULL COMMENT 'dentists.id 참조',
   slot_id INT NOT NULL,
   patient_name VARCHAR(100) NOT NULL COMMENT '예약자 이름',
   patient_phone VARCHAR(20) NOT NULL COMMENT '예약자 전화번호',
@@ -69,7 +106,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (clinic_id) REFERENCES dental_clinics(id) ON DELETE CASCADE,
+  FOREIGN KEY (clinic_id) REFERENCES dentists(id) ON DELETE CASCADE,
   FOREIGN KEY (slot_id) REFERENCES appointment_slots(id) ON DELETE CASCADE,
   INDEX idx_user_id (user_id),
   INDEX idx_patient_phone (patient_phone),
