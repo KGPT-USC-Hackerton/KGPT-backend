@@ -84,6 +84,14 @@ async function setupDatabase() {
     await connection.query(seedSurveyData);
     console.log('✅ 설문 데이터 삽입 완료\n');
 
+    // 자가진단 문진표(15문항) 삽입 - 동적설문(survey_questions/options)
+    console.log('📋 자가진단 문진표(15문항) 삽입 중...');
+    const seedQuestionnairePath = path.join(__dirname, 'database', 'seed_survey_questionnaire.sql');
+    const seedQuestionnaire = fs.readFileSync(seedQuestionnairePath, 'utf8');
+
+    await connection.query(seedQuestionnaire);
+    console.log('✅ 자가진단 문진표 삽입 완료\n');
+
     // 테이블 확인
     console.log('📋 생성된 테이블 목록:');
     const [tables] = await connection.query('SHOW TABLES');

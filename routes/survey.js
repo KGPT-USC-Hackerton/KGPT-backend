@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
  */
 const CATEGORY = {
   ORAL_CARE: '구강관리/양치습관',
-  BAD_BREATH: '구취/구강건조', // DB enum 기준
+  BAD_BREATH: '구치/구강건조', // DB enum 기준 (scores.js/schema와 일치)
   SMOKING: '흡연/음주',
   CARIOGENIC_FOOD: '우식성 식품 섭취',
   SENSITIVITY: '지각과민/불소',
