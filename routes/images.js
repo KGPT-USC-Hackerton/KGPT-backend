@@ -368,9 +368,9 @@ router.get("/history/:historyId/analysis", async (req, res) => {
     const { historyId } = req.params;
 
     // 해당 history_id의 모든 이미지와 분석 결과 조회
-    // 실제 테이블 구조: image_analysis는 history_id와 image_type을 사용
+    // image_analysis 는 image_id 로 dental_images 와 조인한다(테이블에 history_id/image_type 컬럼 없음).
     const [results] = await pool.query(
-      `SELECT 
+      `SELECT
         di.id,
         di.cloudinary_url,
         di.image_type,
@@ -389,7 +389,7 @@ router.get("/history/:historyId/analysis", async (req, res) => {
         ia.analyzed_image_url,
         ia.analyzed_at
        FROM dental_images di
-       LEFT JOIN image_analysis ia ON di.history_id = ia.history_id AND di.position = ia.image_type
+       LEFT JOIN image_analysis ia ON ia.image_id = di.id
        WHERE di.history_id = ?
        ORDER BY 
          CASE di.position
@@ -651,20 +651,18 @@ router.post(
           }),
         };
 
-        // image_analysis 테이블에 저장 (기존 레코드가 있으면 업데이트)
-        // 실제 테이블 구조: history_id, image_type을 사용
+        // image_analysis 테이블에 저장 (image_id 기준, 있으면 업데이트)
+        //   image_analysis 는 image_id(FK→dental_images.id)로만 연결된다.
+        //   user_id/cloudinary_url/analysis_status 는 dental_images 쪽 컬럼이므로 여기서 저장하지 않는다.
         const [existingAnalysis] = await pool.query(
-          "SELECT id FROM image_analysis WHERE history_id = ? AND image_type = ?",
-          [history_id, position]
+          "SELECT id FROM image_analysis WHERE image_id = ?",
+          [imageInfo.id]
         );
 
         if (existingAnalysis.length > 0) {
           // 기존 레코드 업데이트
           await pool.query(
             `UPDATE image_analysis SET
-           user_id = ?,
-           cloudinary_url = ?,
-           analysis_status = ?,
            occlusion_status = ?,
            occlusion_comment = ?,
            cavity_detected = ?,
@@ -676,11 +674,8 @@ router.post(
            analyzed_image_url = ?,
            raw_response = ?,
            analyzed_at = CURRENT_TIMESTAMP
-           WHERE history_id = ? AND image_type = ?`,
+           WHERE image_id = ?`,
             [
-              userId ? String(userId) : null,
-              imageInfo.cloudinary_url,
-              "completed",
               analysisResult.occlusion_status,
               analysisResult.occlusion_comment,
               analysisResult.cavity_detected,
@@ -691,25 +686,19 @@ router.post(
               analysisResult.ai_confidence,
               analysisResult.analyzed_image_url,
               analysisResult.raw_response,
-              history_id,
-              position,
+              imageInfo.id,
             ]
           );
         } else {
           // 새 레코드 삽입
           await pool.query(
-            `INSERT INTO image_analysis 
-           (user_id, history_id, cloudinary_url, image_type, uploaded_at, analysis_status,
-            occlusion_status, occlusion_comment, cavity_detected, 
-            cavity_locations, cavity_comment, overall_score, recommendations, 
-            ai_confidence, analyzed_image_url, raw_response) 
-           VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO image_analysis
+           (image_id, occlusion_status, occlusion_comment, cavity_detected,
+            cavity_locations, cavity_comment, overall_score, recommendations,
+            ai_confidence, analyzed_image_url, raw_response)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-              userId ? String(userId) : null,
-              history_id,
-              imageInfo.cloudinary_url,
-              position,
-              "completed",
+              imageInfo.id,
               analysisResult.occlusion_status,
               analysisResult.occlusion_comment,
               analysisResult.cavity_detected,

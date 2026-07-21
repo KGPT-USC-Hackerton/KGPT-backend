@@ -512,37 +512,39 @@ router.post("/image-analysis", async (req, res) => {
 
   try {
     // 1) 해당 user + history 에 대한 3장(upper/lower/front) 조회
+    //    position/cloudinary_url/analysis_status 는 dental_images, 분석결과는 image_analysis(image_id 조인)
     const [rows] = await pool.query(
       `
       SELECT
-        id,
-        user_id,
-        history_id,
-        image_type,           -- 'upper' | 'lower' | 'front'
-        cloudinary_url,
-        analyzed_image_url,
-        uploaded_at,
-        analyzed_at,
-        analysis_status,
-        occlusion_status,
-        occlusion_comment,
-        cavity_detected,
-        cavity_locations,
-        cavity_comment,
-        overall_score,
-        recommendations,
-        ai_confidence
-      FROM image_analysis
-      WHERE user_id = ?
-        AND history_id = ?
+        di.id,
+        di.user_id,
+        di.history_id,
+        di.position AS image_type,   -- 'upper' | 'lower' | 'front'
+        di.cloudinary_url,
+        ia.analyzed_image_url,
+        di.uploaded_at,
+        ia.analyzed_at,
+        di.analysis_status,
+        ia.occlusion_status,
+        ia.occlusion_comment,
+        ia.cavity_detected,
+        ia.cavity_locations,
+        ia.cavity_comment,
+        ia.overall_score,
+        ia.recommendations,
+        ia.ai_confidence
+      FROM dental_images di
+      LEFT JOIN image_analysis ia ON ia.image_id = di.id
+      WHERE di.user_id = ?
+        AND di.history_id = ?
       ORDER BY
-        CASE image_type
+        CASE di.position
           WHEN 'upper' THEN 1
           WHEN 'lower' THEN 2
           WHEN 'front' THEN 3
           ELSE 99
         END,
-        id ASC
+        di.id ASC
       `,
       [user_id, history_id]
     );
@@ -712,38 +714,41 @@ router.get("/image-analysis/history/:historyId", async (req, res) => {
 
   try {
     // 1) 해당 유저 + history_id 에 해당하는 3장(upper/lower/front) 조회
+    //    position/cloudinary_url/analysis_status 는 dental_images, 분석결과는 image_analysis(image_id 조인)
+    //    llm_summary 컬럼은 존재하지 않아 NULL 로 둔다.
     const [rows] = await pool.query(
       `
       SELECT
-        id,
-        user_id,
-        history_id,
-        cloudinary_url,
-        analyzed_image_url,
-        image_type,
-        uploaded_at,
-        analyzed_at,
-        analysis_status,
-        occlusion_status,
-        occlusion_comment,
-        cavity_detected,
-        cavity_locations,
-        cavity_comment,
-        overall_score,
-        recommendations,
-        ai_confidence,
-        llm_summary
-      FROM image_analysis
-      WHERE user_id = ?
-        AND history_id = ?
+        di.id,
+        di.user_id,
+        di.history_id,
+        di.cloudinary_url,
+        ia.analyzed_image_url,
+        di.position AS image_type,
+        di.uploaded_at,
+        ia.analyzed_at,
+        di.analysis_status,
+        ia.occlusion_status,
+        ia.occlusion_comment,
+        ia.cavity_detected,
+        ia.cavity_locations,
+        ia.cavity_comment,
+        ia.overall_score,
+        ia.recommendations,
+        ia.ai_confidence,
+        NULL AS llm_summary
+      FROM dental_images di
+      LEFT JOIN image_analysis ia ON ia.image_id = di.id
+      WHERE di.user_id = ?
+        AND di.history_id = ?
       ORDER BY
-        CASE image_type
+        CASE di.position
           WHEN 'upper' THEN 1
           WHEN 'lower' THEN 2
           WHEN 'front' THEN 3
           ELSE 99
         END,
-        id ASC
+        di.id ASC
       `,
       [user_id, historyId]
     );
