@@ -25,6 +25,8 @@ const surveyRoutes = require('./routes/survey');
 const scoresRoutes = require('./routes/scores');
 const aiRoutes = require('./routes/ai');
 const surveyDetailRoutes = require('./routes/survey_detail');
+const agentRoutes = require('./routes/agent');
+const dentalPassPublicRoutes = require('./routes/dentalPassPublic');
 
 
 app.use('/api', apiRoutes);
@@ -36,6 +38,11 @@ app.use('/api/survey', surveyRoutes);
 app.use('/api/scores', scoresRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/survey-detail', surveyDetailRoutes);
+// Agent Copilot 백엔드 (agentDemoAuth가 라우터 내부에서 전 엔드포인트에 선적용됨)
+app.use('/api/agent', agentRoutes);
+// Dental Pass 공개 조회 — "/api/agent만 인증" 원칙에 대한 명시적 예외
+// (routes/dentalPassPublic.js 상단 주석 참고).
+app.use('/api/dental-pass', dentalPassPublicRoutes);
 
 // 루트 경로
 app.get('/', (req, res) => {
@@ -53,6 +60,10 @@ app.use((req, res) => {
     message: '요청하신 API를 찾을 수 없습니다.'
   });
 });
+
+// express.json() 파싱 실패(malformed JSON body)를 400으로 정규화 — 원본 parser
+// 메시지/stack/요청 body를 노출하는 일반 500 핸들러로 넘어가지 않도록 그 앞에 둔다.
+app.use(require('./middleware/jsonParseErrorHandler'));
 
 // 전역 에러 핸들링
 app.use((err, req, res, next) => {
