@@ -1,5 +1,5 @@
 // services/oralTipsService.js
-const { ai } = require('../utils/geminiClient');
+const { ai, GEMINI_MODEL } = require('../utils/geminiClient');
 
 /**
  * 오늘의 구강 관리 Tip을 생성하는 서비스 함수
@@ -20,7 +20,7 @@ async function generateOralCareTip() {
 `;
 
   const result = await ai.models.generateContent({
-    model: 'gemini-2.0-flash', // 빠르고 저렴한 모델 (추후 필요시 pro 계열로 변경 가능)
+    model: GEMINI_MODEL, // 모델명은 utils/geminiClient.js / .env 에서 관리
     contents: [
       {
         role: 'user',

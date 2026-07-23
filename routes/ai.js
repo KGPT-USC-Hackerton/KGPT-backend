@@ -1,6 +1,6 @@
 // routes/ai.js
 const express = require("express");
-const { ai } = require("../utils/geminiClient");
+const { ai, GEMINI_MODEL } = require("../utils/geminiClient");
 const { generateOralCareTip } = require("../services/oralTipsService");
 const { pool } = require("../config/database");
 
@@ -61,7 +61,7 @@ router.get("/test", async (req, res) => {
       "제미나이 GenAI SDK 테스트입니다. 공손한 한국어로 한 줄 인사해 주세요.";
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: GEMINI_MODEL,
       contents: [
         {
           role: "user",
@@ -173,7 +173,7 @@ ${JSON.stringify(responses, null, 2)}
     `;
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: GEMINI_MODEL,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
 
@@ -266,7 +266,8 @@ router.post("/combined-analysis", async (req, res) => {
         di.analysis_status,
         ia.occlusion_status, ia.occlusion_comment,
         ia.cavity_detected, ia.cavity_locations, ia.cavity_comment,
-        ia.overall_score, ia.recommendations, ia.ai_confidence
+        ia.overall_score, ia.recommendations, ia.ai_confidence,
+        di.cloudinary_url, ia.analyzed_image_url
       FROM dental_images di
       LEFT JOIN image_analysis ia ON ia.image_id = di.id
       WHERE di.user_id = ?
@@ -308,6 +309,23 @@ router.post("/combined-analysis", async (req, res) => {
       recommendations: r.recommendations,
     }));
 
+    // 이미지 URL은 프롬프트(imageRecords)에 넣지 않고 응답 전용으로만 구성한다.
+    // position 당 여러 행이 있을 수 있어(재업로드 등) 분석 이미지가 있는 행을 우선 채택한다.
+    const imageUrlsByType = {};
+    for (const r of imageRows) {
+      if (!r.image_type) continue;
+      const prev = imageUrlsByType[r.image_type];
+      if (prev && prev.analyzed_image_url) continue; // 이미 분석본 확보
+      imageUrlsByType[r.image_type] = {
+        image_type: r.image_type,
+        original_image_url: r.cloudinary_url || null,
+        analyzed_image_url: r.analyzed_image_url || null,
+      };
+    }
+    const images = ["upper", "lower", "front"]
+      .map((t) => imageUrlsByType[t])
+      .filter(Boolean);
+
     // 4) 통합 프롬프트
     const prompt = `
 당신은 전문 치과의사이자 치과위생사 AI입니다.
@@ -343,7 +361,7 @@ ${JSON.stringify(imageRecords, null, 2)}
     `;
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: GEMINI_MODEL,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: "application/json" },
     });
@@ -365,6 +383,7 @@ ${JSON.stringify(imageRecords, null, 2)}
       success: true,
       message: "통합 분석 완료",
       analysis,
+      images, // upper/lower/front 원본 + 분석 결과 이미지 URL
       meta: {
         survey_count: surveyResponses.length,
         image_count: imageRecords.length,
@@ -440,7 +459,7 @@ ${JSON.stringify(responses, null, 2)}
     `;
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: GEMINI_MODEL,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       // ✅ JSON만 받도록 강하게 지정
       generationConfig: {
@@ -631,7 +650,7 @@ ${JSON.stringify(
     `;
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: GEMINI_MODEL,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
         responseMimeType: "application/json", // JSON만 받도록 힌트
