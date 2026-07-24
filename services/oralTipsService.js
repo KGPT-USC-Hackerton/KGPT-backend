@@ -20,7 +20,8 @@ async function generateOralCareTip() {
 `;
 
   const result = await ai.models.generateContent({
-    model: 'gemini-2.0-flash', // 빠르고 저렴한 모델 (추후 필요시 pro 계열로 변경 가능)
+    // 모델명은 GEMINI_MODEL 환경 변수로만 관리한다(하드코딩 금지).
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     contents: [
       {
         role: 'user',

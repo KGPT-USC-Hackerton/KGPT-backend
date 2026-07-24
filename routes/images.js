@@ -564,6 +564,7 @@ router.post(
       for (const img of images) {
         imageInfoMap[img.position] = {
           id: img.id,
+          user_id: img.user_id,
           cloudinary_url: img.cloudinary_url,
         };
         if (!userId && img.user_id) {
@@ -652,8 +653,9 @@ router.post(
         };
 
         // image_analysis 테이블에 저장 (image_id 기준, 있으면 업데이트)
-        //   image_analysis 는 image_id(FK→dental_images.id)로만 연결된다.
-        //   user_id/cloudinary_url/analysis_status 는 dental_images 쪽 컬럼이므로 여기서 저장하지 않는다.
+        //   image_analysis 는 image_id(FK→dental_images.id)로 연결되지만,
+        //   Gemini 요약 UPDATE(routes/ai.js)가 user_id/history_id/image_type 으로
+        //   행을 찾으므로 삽입 시 해당 값들도 함께 채워 준다.
         const [existingAnalysis] = await pool.query(
           "SELECT id FROM image_analysis WHERE image_id = ?",
           [imageInfo.id]
@@ -693,12 +695,17 @@ router.post(
           // 새 레코드 삽입
           await pool.query(
             `INSERT INTO image_analysis
-           (image_id, occlusion_status, occlusion_comment, cavity_detected,
+           (image_id, user_id, history_id, image_type, analysis_status,
+            occlusion_status, occlusion_comment, cavity_detected,
             cavity_locations, cavity_comment, overall_score, recommendations,
             ai_confidence, analyzed_image_url, raw_response)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               imageInfo.id,
+              imageInfo.user_id,
+              history_id,
+              position,
+              "completed",
               analysisResult.occlusion_status,
               analysisResult.occlusion_comment,
               analysisResult.cavity_detected,

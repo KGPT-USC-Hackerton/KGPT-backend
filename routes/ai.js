@@ -2,6 +2,7 @@
 const express = require("express");
 const { ai } = require("../utils/geminiClient");
 const { generateOralCareTip } = require("../services/oralTipsService");
+const { parseCavityLocations } = require("../utils/parseCavityLocations");
 const { pool } = require("../config/database");
 
 const router = express.Router();
@@ -61,7 +62,7 @@ router.get("/test", async (req, res) => {
       "제미나이 GenAI SDK 테스트입니다. 공손한 한국어로 한 줄 인사해 주세요.";
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
       contents: [
         {
           role: "user",
@@ -173,7 +174,7 @@ ${JSON.stringify(responses, null, 2)}
     `;
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
 
@@ -286,15 +287,7 @@ router.post("/combined-analysis", async (req, res) => {
       });
     }
 
-    const parseLocations = (value) => {
-      if (!value) return [];
-      try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch (e) {
-        return [];
-      }
-    };
+    const parseLocations = parseCavityLocations;
 
     const imageRecords = imageRows.map((r) => ({
       image_type: r.image_type,
@@ -343,7 +336,7 @@ ${JSON.stringify(imageRecords, null, 2)}
     `;
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: "application/json" },
     });
@@ -440,7 +433,7 @@ ${JSON.stringify(responses, null, 2)}
     `;
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       // ✅ JSON만 받도록 강하게 지정
       generationConfig: {
@@ -557,16 +550,7 @@ router.post("/image-analysis", async (req, res) => {
     }
 
     // cavity_locations JSON 파싱
-    const parseLocations = (value) => {
-      if (!value) return [];
-      try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch (e) {
-        console.warn("cavity_locations JSON parse error:", e);
-        return [];
-      }
-    };
+    const parseLocations = parseCavityLocations;
 
     const records = rows.map((r) => ({
       id: r.id,
@@ -631,7 +615,7 @@ ${JSON.stringify(
     `;
 
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
         responseMimeType: "application/json", // JSON만 받도록 힌트
@@ -761,16 +745,7 @@ router.get("/image-analysis/history/:historyId", async (req, res) => {
     }
 
     // 2) cavity_locations / llm_summary JSON 파싱
-    const parseLocations = (value) => {
-      if (!value) return [];
-      try {
-        const parsed = JSON.parse(value);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch (e) {
-        console.warn("cavity_locations JSON parse error:", e);
-        return [];
-      }
-    };
+    const parseLocations = parseCavityLocations;
 
     const parseSummary = (value) => {
       if (!value) return null;
